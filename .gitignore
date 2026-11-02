@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+.venv/
+.browser-profile/
+output/
+__pycache__/
+*.pyc

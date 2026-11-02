@@ -1,263 +1,108 @@
-# Web Crawler
+# Food Review Collector
 
-A concurrent web crawler built with Python that extracts structured data from websites, including headings, paragraphs, links, and images. It uses `asyncio` and `aiohttp` to perform high-performance concurrent crawling while respecting configurable limits.
+A separate, history-preserving derivative of [GSheng05/Web-Scrapper](https://github.com/GSheng05/Web-Scrapper).
+The original crawler modules (`crawl.py`, `main.py`, `json_report.py`) remain unchanged.
+Their usage is in [README-crawler.md](README-crawler.md).
 
-## Features
+Give the new collector a Google Maps restaurant URL or Shopee food-product URL. It attempts to walk the reviews exposed by the website and exports:
 
-* **Concurrent crawling** with configurable concurrency limits
-* **Maximum pages limit** to control the scope of the crawl
-* **Same-domain restriction** to prevent crawling unrelated websites
-* **URL normalization** to detect and avoid duplicate pages
-* **Structured data extraction**, including:
+- `raw_review`: original review text, without language filtering, cleaning, spelling correction or translation.
+- `source_url`: restaurant/product page URL.
+- `source_name`: restaurant/product name.
+- Platform, source review ID, rating, review date and collection timestamp when available.
 
-  * Page headings (`h1`, `h2`)
-  * First paragraph content
-  * Outgoing links
-  * Image URLs
-* **JSON report generation** for easy data analysis
-* **Command-line interface (CLI)** for flexible configuration
-* **Unit testing** for the crawling functionality
+**Status: framework with passing offline extraction tests. Live testing of the supplied Google Maps link showed a limited view without reviews; the Shopee product link redirected to a login/traffic error. Both adapters still need live extraction validation with an accessible signed-in session. Do not assume all reviews were collected.**
 
-## Installation
+## Install (Python 3.10+)
 
-### Prerequisites
+The review collector has a separate environment/dependency file so the original crawler configuration is preserved. Its original `pyproject.toml` requires Python 3.14; these commands deliberately do not use that configuration.
 
-* Python 3.8+
-* [uv](https://docs.astral.sh/uv/) package manager (recommended)
-
-### Clone the Repository
-
-```bash
-git clone https://github.com/GSheng05/Web-Scrapper.git
-cd Web-Scrapper
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-reviews.txt
+.\.venv\Scripts\python.exe -m playwright install chromium
 ```
 
-### Install Dependencies
+On macOS/Linux, use `python3 -m venv .venv` and `.venv/bin/python`.
 
-Using `uv` (recommended):
+## Collect
 
-```bash
-uv sync
+Paste a single **Google Maps place** link, preferably the full `https://www.google.com/maps/place/...` link. Short Maps links are supported. Some `share.google` links open Search instead; the collector follows a Maps place link when available, otherwise requests a Maps link instead of guessing the restaurant.
+
+```powershell
+.\.venv\Scripts\python.exe collect_reviews.py "PASTE_GOOGLE_MAPS_PLACE_URL" --category "Food court" --limit 200 --interactive
+.\.venv\Scripts\python.exe collect_reviews.py "PASTE_SHOPEE_PRODUCT_URL" --category "Instant noodles" --interactive
 ```
 
-Alternatively, using `pip`:
+Replace the placeholder URL. With `--interactive`, the browser opens and waits for you to handle login, consent or verification and open the intended place/product. Press Enter **in the terminal** to begin collection. You can also open its Reviews tab while paused. The profile is isolated from your personal Chrome profile and stored in `.browser-profile/`; never share or commit it.
 
-```bash
-pip install -r requirements.txt
-```
+Without `--interactive`, the browser runs headlessly and stops if a login/verification gate is detected. The tool does not solve CAPTCHAs or bypass access controls. Use sources you are permitted to collect from and review platform collection conditions before running a large collection.
 
-## Usage
+Omit `--limit` to collect until the exposed list ends, stalls or reaches the safety time limit. Defaults: 2 seconds between batches, 5 idle rounds and 30 minutes maximum after source setup. Change these with `--delay`, `--idle-rounds`, `--max-minutes`. `--name` explicitly overrides the page name if necessary.
 
-### Basic Usage
-
-Run the crawler with a URL:
-
-```bash
-uv run main.py https://example.com
-```
-
-The crawler uses the following default settings:
-
-| Setting             | Default |
-| ------------------- | ------: |
-| Maximum concurrency |     `5` |
-| Maximum pages       |   `100` |
-
-### Advanced Usage
-
-The command accepts optional arguments for controlling concurrency and the maximum number of pages:
-
-```bash
-uv run main.py URL [max_concurrency] [max_pages]
-```
-
-#### Examples
-
-Crawl with **3 concurrent requests**:
-
-```bash
-uv run main.py https://example.com 3
-```
-
-Crawl with **3 concurrent requests** and a **10-page limit**:
-
-```bash
-uv run main.py https://example.com 3 10
-```
-
-Crawl with **10 concurrent requests** and a **50-page limit**:
-
-```bash
-uv run main.py https://example.com 10 50
-```
+Each run gets a new folder under `output/`. `--output PATH` chooses a new/empty folder. Existing nonempty folders are rejected to prevent overwrites. This version checkpoints results after each batch but does not resume browser pagination after an interrupted run.
 
 ## Output
 
-After crawling, the application generates a `report.json` file containing structured information about the pages that were successfully crawled.
+`reviews.json` is the authoritative UTF-8 raw dataset. Empty text reviews and identical text from different review IDs remain in the file. Only repeated observations of the **same source review ID on the same page** are suppressed during scrolling. Text is preserved as returned by the browser DOM (Maps) or the original comment response (Shopee); DOM text is not byte-for-byte original submission HTML.
 
-The report includes:
+`reviews.csv` has the twelve columns in the assignment template's **Self-Collected Data** sheet:
 
-* Page URLs
-* Page headings
-* First paragraph
-* Outgoing links
-* Image URLs
+| Column | Value |
+|---|---|
+| Review ID | Platform review ID |
+| Data Origin | Self-Collected (Real) |
+| Product Category | Your `--category` value |
+| Product / Eatery Name | `source_name` |
+| Source Platform | Google Reviews or Shopee |
+| Source URL | `source_url` |
+| Rating (1-5) | Source value, otherwise blank |
+| Review Date | Source date; Google may expose a relative date such as `2 weeks ago` |
+| Review Text | Original `raw_review` |
+| Language Classification | Blank for later annotation |
+| Code-Switching Type | Blank for later annotation |
+| Notes / Annotator Comments | Blank for later annotation |
 
-All crawled pages are sorted by URL to ensure consistent and predictable output.
+CSV text is deliberately unmodified, including values beginning with `=`, `+`, `-`, or `@`. Import with Excel **Data → From Text/CSV**, treating the review and ID columns as **Text**, instead of double-clicking the CSV, so untrusted review text is not interpreted as a formula and long IDs retain precision. The supplied workbook is not edited and its example rows are not real collected data.
 
-### Example Output Structure
+`manifest.json` records counts, empty/repeated texts, repeated page observations, errors and the stop reason. `all_reviews_verified` remains **false**: neither visible pagination nor an idle panel proves that the platform exposed every review.
 
-```json
-{
-  "https://example.com": {
-    "headings": [
-      "Example Domain"
-    ],
-    "first_paragraph": "This domain is for use in illustrative examples...",
-    "links": [
-      "https://example.com/about"
-    ],
-    "images": []
-  }
-}
-```
+| Stop reason | Meaning |
+|---|---|
+| `user_limit` | Requested review cap reached |
+| `visible_pagination_end` | Shopee disabled its Next control; only the exposed list ended |
+| `stalled_unverified` | No new review IDs for the configured rounds |
+| `no_scrollable_review_pane` | Maps pane could not be scrolled; inspect selectors/layout |
+| `blocked` | Login/verification or failed ratings request |
+| `time_limit` / `interrupted` | Safety timeout or Ctrl+C |
+| `error` | Unexpected page/schema/dependency failure; see warnings |
 
-> **Note:** The exact contents of `report.json` depend on the website being crawled.
+Exit code 0 indicates the requested cap or visible pagination end; code 2 signals an incomplete/error stop. A zero exit code **does not** mean all platform reviews were retrieved. Always inspect the manifest.
 
-## Testing
+## Why browser adapters?
 
-The project includes a unit test suite for validating the crawler's functionality.
-
-Run all tests with:
-
-```bash
-uv run -m unittest
-```
-
-For more detailed test output:
-
-```bash
-uv run -m unittest -v
-```
-
-## Project Structure
+The original crawler downloads HTML, follows links and extracts headings/first paragraphs. Reviews load dynamically inside one place/product page. Reusing its same-domain crawl loop would miss review pagination. Reusing its URL normalizer would also discard query identifiers needed by some sources.
 
 ```text
-.
-├── crawl.py          # Core crawling logic and data extraction
-├── main.py           # Command-line interface entry point
-├── json_report.py    # JSON report generation
-├── test_crawl.py     # Unit tests
-└── report.json       # Generated crawl report
+URL → source validation → Google Maps / Shopee adapter
+    → original Review records → source-ID deduplication
+    → checkpointed JSON + template-compatible CSV + run manifest
 ```
 
-## How It Works
+Google Maps: open Reviews, select original-language text when translation is displayed, expand More, extract individual cards, then scroll the review pane. Never include owner replies. Relative dates are kept as supplied, not guessed as exact dates.
 
-The crawler follows several steps to collect and process website data.
+Shopee: observe the product page's own ratings responses while clicking its review pagination. Preserve `comment` strings. Match both shop and item IDs and exclude recommendation/similar-product reviews. No direct undocumented API requests are generated. The observed-response schema and CSS selectors are isolated in `reviews/browser.py` and `reviews/core.py`; they may require updates when Shopee changes its website. No reviewer account names or browser credentials are exported.
 
-### 1. URL Normalization
+See [source analysis and assignment mapping](docs/FRAMEWORK.md).
 
-URLs are converted into a canonical format before being processed. This helps the crawler identify duplicate URLs and prevents the same page from being crawled multiple times.
+## Tests
 
-### 2. HTML Parsing
+Install the original crawler dependencies if running its tests too:
 
-The crawler retrieves the HTML content of each page and uses **BeautifulSoup** to parse the document.
-
-It extracts:
-
-* `h1` and `h2` headings
-* The first paragraph
-* Outgoing links
-* Image URLs
-
-### 3. Concurrent Crawling
-
-The crawler uses Python's **`asyncio`** framework together with **`aiohttp`** to make multiple HTTP requests concurrently.
-
-The number of simultaneous requests can be controlled using the `max_concurrency` setting.
-
-### 4. Data Storage
-
-Information collected from each page is stored in memory while the crawler is running.
-
-The crawler continues discovering and processing pages until either:
-
-* There are no more pages to crawl, or
-* The `max_pages` limit has been reached.
-
-### 5. Report Generation
-
-Once crawling is complete, the collected data is passed to the JSON report generator.
-
-The results are written to:
-
-```text
-report.json
+```powershell
+.\.venv\Scripts\python.exe -m pip install beautifulsoup4 aiohttp requests
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest test_crawl -v
 ```
 
-The pages are sorted by URL to provide consistent output.
-
-## Configuration
-
-The crawler's behaviour can be configured in `crawl.py`.
-
-### Maximum Concurrency
-
-Controls the maximum number of requests that can be made simultaneously.
-
-```python
-max_concurrency = 5
-```
-
-A higher value can increase crawling speed, but excessive concurrency may put unnecessary load on the target website or cause requests to be blocked.
-
-### Maximum Pages
-
-Controls the maximum number of pages that the crawler will process.
-
-```python
-max_pages = 100
-```
-
-This prevents the crawler from continuing indefinitely on websites with a large number of pages.
-
-### User-Agent
-
-The HTTP `User-Agent` string can be configured in the `get_html` method.
-
-This identifies the crawler when making HTTP requests.
-
-## Limitations
-
-* The crawler only processes pages belonging to the **same domain** as the starting URL.
-* The number of crawled pages is restricted by the `max_pages` limit.
-* Some websites may block or restrict automated crawlers.
-* Websites that rely heavily on JavaScript may not expose all their content through the retrieved HTML.
-* Crawling performance depends on the target website's response time and network conditions.
-
-## Technologies Used
-
-* **Python** — Core programming language
-* **asyncio** — Asynchronous programming and concurrency
-* **aiohttp** — Asynchronous HTTP requests
-* **BeautifulSoup** — HTML parsing and data extraction
-* **JSON** — Structured report generation
-* **unittest** — Automated testing
-* **uv** — Python package and project management
-
-## License
-
-This project is for educational purposes and was developed as part of the **Boot.dev** curriculum.
-
-## Contributing
-
-Contributions are welcome!
-
-If you find a bug or have an idea for an improvement, feel free to:
-
-1. Open an issue describing the problem or enhancement.
-2. Submit a pull request with your proposed changes.
-
----
-
-**Happy crawling! 🕷️**
+Browser fixtures run locally with Chromium and synthetic review text. They verify extraction mechanics and failure handling, not current production-site selectors. Generated test fixtures are not assignment data. Actual review outputs and browser profiles are ignored by Git.

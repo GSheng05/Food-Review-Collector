@@ -1,0 +1,86 @@
+import csv
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from reviews.core import Review, Store, platform_for, shopee_ids, shopee_reviews, HEADERS
+
+URL = 'https://shopee.com.my/Food-i.123.456'
+RESPONSE = 'https://shopee.com.my/api/v2/item/get_ratings?shopid=123&itemid=456&offset=0'
+
+
+class CoreTests(unittest.TestCase):
+    def row(self, id='1', text='Sedap lah! Really good.\n  Mantap 😋', **kwargs):
+        return Review(id, text, URL, 'Food', 'shopee', **kwargs)
+
+    def test_platforms_and_ids(self):
+        for url in ['https://share.google/example', 'https://maps.app.goo.gl/example', 'https://www.google.com/maps/place/Food']:
+            self.assertEqual(platform_for(url), 'google_maps')
+        self.assertEqual(platform_for(URL), 'shopee')
+        self.assertEqual(platform_for('https://my.shp.ee/QejgsfVB'), 'shopee')
+        self.assertEqual(shopee_ids(URL), ('123', '456'))
+        self.assertEqual(shopee_ids('https://shopee.com.my/product/123/456?x=1'), ('123', '456'))
+
+    def test_reject_deceptive_or_unsupported_urls(self):
+        for url in ['https://shopee.com.my.evil.org/x', 'file:///secret', 'http://shopee.com.my/x', 'https://user:pass@shopee.com.my/x', 'https://google.com/search?q=food']:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                platform_for(url)
+
+    def test_lossless_and_distinct_reviews_with_same_words(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(d, URL, 'shopee')
+            text = '  Sedap, "wow"!\nBest 😋\t'
+            self.assertEqual(store.add([self.row('1', text), self.row('2', text), self.row('3', '')]), 3)
+            self.assertEqual(store.add([self.row('1', text)]), 0)
+            store.save('test')
+            rows = json.loads((Path(d) / 'reviews.json').read_text(encoding='utf-8'))
+            self.assertEqual(rows[0]['raw_review'], text)
+            self.assertEqual(rows[2]['raw_review'], '')
+            with (Path(d) / 'reviews.csv').open(encoding='utf-8-sig', newline='') as f:
+                csvrows = list(csv.reader(f))
+            self.assertEqual(csvrows[0], HEADERS)
+            self.assertEqual(csvrows[1][8], text)
+            self.assertEqual(csvrows[1][9:11], ['', ''])
+            self.assertEqual(store.manifest['empty_reviews'], 1)
+            self.assertEqual(store.manifest['repeated_text_reviews'], 1)
+            self.assertFalse(store.manifest['all_reviews_verified'])
+
+    def test_limit_does_not_overrun_batch(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(d, URL, 'shopee', limit=1)
+            self.assertEqual(store.add([self.row('1'), self.row('2')]), 1)
+            self.assertTrue(store.full)
+
+    def test_same_id_on_different_products_not_collapsed(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(d, URL, 'shopee')
+            a, b = self.row(), self.row()
+            b.source_url = 'https://shopee.com.my/Food-i.123.789'
+            self.assertEqual(store.add([a, b]), 2)
+
+    def payload(self):
+        return {'error': 0, 'data': {'ratings': [
+            {'cmtid': 1, 'itemid': 456, 'shopid': 123, 'comment': 'Sedap!\n  good 😋', 'rating_star': 5, 'ctime': 1700000000},
+            {'cmtid': 2, 'itemid': 456, 'shopid': 123, 'comment': '', 'rating_star': 3},
+            {'cmtid': 3, 'itemid': 999, 'shopid': 123, 'comment': 'Other product', 'rating_star': 4}]}}
+
+    def test_shopee_original_empty_metadata_and_related_exclusion(self):
+        rows = shopee_reviews(self.payload(), RESPONSE, URL, 'Food')
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].raw_review, 'Sedap!\n  good 😋')
+        self.assertEqual(rows[0].rating, 5)
+        self.assertEqual(rows[0].review_date, '2023-11-14T22:13:20+00:00')
+        self.assertEqual(rows[1].raw_review, '')
+        self.assertIsNone(rows[1].review_date)
+
+    def test_ignore_other_response(self):
+        self.assertEqual(shopee_reviews(self.payload(), RESPONSE.replace('itemid=456', 'itemid=999'), URL, 'Food'), [])
+
+    def test_shopee_schema_failure_is_explicit(self):
+        for payload in [{'error': 1}, {'data': {}}, {'data': {'ratings': [{'itemid': 456, 'shopid': 123}]}}]:
+            with self.assertRaises(ValueError):
+                shopee_reviews(payload, RESPONSE, URL, 'Food')
+
+
+if __name__ == '__main__':
+    unittest.main()

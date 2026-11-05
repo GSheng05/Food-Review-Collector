@@ -81,6 +81,21 @@ class BrowserTests(unittest.TestCase):
             with self.assertRaises(CollectionBlocked):
                 check_gate(self.page)
 
+    def test_limited_maps_with_reviews_tab_open(self):
+        url = 'https://www.google.com/maps/place/Food'
+        self.page.route(url, lambda route: route.fulfill(content_type='text/html', body="""
+            <main aria-label="Food Court">
+                <button role="tab" aria-selected="true">Reviews</button>
+                <div class="jftiEf" data-review-id="abc"><span class="wiI7pd">Sedap!</span></div>
+                <div>You're seeing a limited view of Google Maps.</div>
+            </main>
+        """))
+        self.page.goto(url)
+        adapter = self.google()
+        adapter.open()
+        self.assertEqual(adapter.name, 'Food Court')
+        self.assertEqual(adapter.harvest()[0].raw_review, 'Sedap!')
+
     def test_shopee_pagination_end_and_schema_error(self):
         adapter = Shopee(self.page, self.store, self.args)
         adapter.batches = 1

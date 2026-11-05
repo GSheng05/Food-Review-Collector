@@ -4,6 +4,11 @@ from urllib.parse import urlsplit
 from .core import Review, platform_for, shopee_ids, shopee_reviews
 
 
+GOOGLE_REVIEW_CARDS = '.jftiEf[data-review-id]'
+GOOGLE_REVIEWS_TAB = re.compile(r'Reviews|Ulasan', re.I)
+GOOGLE_LIMITED_VIEW = re.compile(r"You.re seeing a limited view of Google Maps", re.I)
+
+
 class CollectionBlocked(RuntimeError):
     pass
 
@@ -12,7 +17,9 @@ def check_gate(page):
     url = page.url.lower()
     if '/sorry/' in url or '/captcha' in url or '/verify/' in url or '/buyer/login' in url:
         raise CollectionBlocked('Login or verification required. Run with --interactive and complete it yourself.')
-    if page.get_by_text(re.compile(r"You.re seeing a limited view of Google Maps", re.I)).count():
+    if (page.get_by_text(GOOGLE_LIMITED_VIEW).count()
+            and not page.locator(GOOGLE_REVIEW_CARDS).count()
+            and not page.get_by_role('tab', name=GOOGLE_REVIEWS_TAB).count()):
         raise CollectionBlocked('Google Maps is showing a limited view without reviews. Run with --interactive and sign in if requested.')
     if page.get_by_text('Page Unavailable', exact=True).count():
         raise CollectionBlocked('The source page is unavailable. Open --interactive to handle login or check access.')
@@ -37,7 +44,7 @@ def google_price_range(card):
 
 
 class GoogleMaps:
-    card_selector = '.jftiEf[data-review-id]'
+    card_selector = GOOGLE_REVIEW_CARDS
 
     def __init__(self, page, store, args):
         self.page, self.store, self.args = page, store, args
@@ -57,15 +64,17 @@ class GoogleMaps:
         check_gate(page)
         if platform_for(page.url) != 'google_maps' or '/maps' not in urlsplit(page.url).path:
             raise ValueError('Open a single restaurant in Google Maps and use its full place link.')
-        page.locator('h1.DUwDvf').wait_for(timeout=20000)
-        self.name = self.args.name or page.locator('h1.DUwDvf').inner_text()
+        heading = page.locator('h1.DUwDvf')
+        place = page.locator('main[aria-label], [role="main"][aria-label]').first
+        heading.or_(place).first.wait_for(timeout=20000)
+        self.name = self.args.name or text_or_none(heading) or place.get_attribute('aria-label')
         self.source_url = page.url
-        if not page.locator(self.card_selector).count():
-            tab = page.get_by_role('tab', name=re.compile(r'Reviews|Ulasan', re.I)).first
-            if tab.count():
+        tab = page.get_by_role('tab', name=GOOGLE_REVIEWS_TAB).first
+        if tab.count():
+            if tab.get_attribute('aria-selected') != 'true':
                 tab.click()
-            else:
-                page.get_by_role('button', name=re.compile(r'\d[\d,.]*\s+(reviews|ulasan)', re.I)).first.click()
+        elif not page.locator(self.card_selector).count():
+            page.get_by_role('button', name=re.compile(r'\d[\d,.]*\s+(reviews|ulasan)', re.I)).first.click()
         page.locator(self.card_selector).first.wait_for(timeout=20000)
         # Leave filters at their default; sorting alone does not filter review text.
         self.store.manifest.update(source_url=self.source_url, source_name=self.name,

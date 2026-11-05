@@ -2,6 +2,7 @@
 import csv
 import json
 import re
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +81,19 @@ HEADERS = ['Data Origin', 'Product / Eatery Name',
            'Language Classification', 'Code-Switching Type', 'Notes / Annotator Comments']
 
 
+def replace_export(temporary, destination):
+    # Windows indexers/readers may briefly hold the destination open after a save.
+    for attempt in range(5):
+        try:
+            temporary.replace(destination)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.2)
+
+
+
 class Store:
     def __init__(self, directory, input_url, platform, limit=None):
         self.directory = Path(directory)
@@ -117,7 +131,7 @@ class Store:
         for name, value in [('reviews.json', [{k: v for k, v in asdict(r).items() if not k.startswith('_')} for r in self.rows.values()]), ('manifest.json', self.manifest)]:
             tmp = self.directory / (name + '.tmp')
             tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
-            tmp.replace(self.directory / name)
+            replace_export(tmp, self.directory / name)
         tmp = self.directory / 'reviews.csv.tmp'
         with tmp.open('w', encoding='utf-8-sig', newline='') as stream:
             writer = csv.writer(stream)
@@ -126,4 +140,4 @@ class Store:
                 writer.writerow(['Self-Collected (Real)', r.source_name,
                                  'Google Reviews' if r.platform == 'google_maps' else 'Shopee', r.source_url,
                                  r.rating, r.review_date, r.price_range, r.raw_review, '', '', ''])
-        tmp.replace(self.directory / 'reviews.csv')
+        replace_export(tmp, self.directory / 'reviews.csv')

@@ -77,6 +77,24 @@ class CoreTests(unittest.TestCase):
             b.source_url = 'https://shopee.com.my/Food-i.123.789'
             self.assertEqual(store.add([a, b]), 2)
 
+    def test_transient_windows_save_lock_is_retried(self):
+        from unittest.mock import Mock, patch
+        from reviews.core import replace_export
+        temporary = Mock()
+        temporary.replace.side_effect = [PermissionError('locked'), None]
+        with patch('reviews.core.time.sleep'):
+            replace_export(temporary, 'destination')
+        self.assertEqual(temporary.replace.call_count, 2)
+
+    def test_persistent_save_lock_is_reported(self):
+        from unittest.mock import Mock, patch
+        from reviews.core import replace_export
+        temporary = Mock()
+        temporary.replace.side_effect = PermissionError('locked')
+        with patch('reviews.core.time.sleep'), self.assertRaises(PermissionError):
+            replace_export(temporary, 'destination')
+        self.assertEqual(temporary.replace.call_count, 5)
+
     def payload(self):
         return {'error': 0, 'data': {'ratings': [
             {'cmtid': 1, 'itemid': 456, 'shopid': 123, 'comment': 'Sedap!\n  good 😋', 'rating_star': 5, 'ctime': 1700000000},

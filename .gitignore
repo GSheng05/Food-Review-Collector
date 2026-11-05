@@ -13,3 +13,7 @@ wheels/
 output/
 __pycache__/
 *.pyc
+
+.serpapi-key
+.env
+.env.*

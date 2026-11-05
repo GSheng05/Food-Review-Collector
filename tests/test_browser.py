@@ -48,7 +48,7 @@ class BrowserTests(unittest.TestCase):
           <div class="jftiEf" data-review-id="empty"><span role="img" aria-label="3 stars"></span></div>
         </div></div>''')
         adapter = self.google()
-        rows = adapter.harvest()
+        rows = list(adapter.harvest())
         self.assertEqual(rows[0].raw_review, 'Sedap lah!\nBest 😋')
         self.assertEqual(rows[0].rating, 5)
         self.assertEqual(rows[0].review_date, '2 weeks ago')
@@ -68,7 +68,20 @@ class BrowserTests(unittest.TestCase):
     def test_unresolved_translation_is_not_exported(self):
         self.page.set_content('<div class="jftiEf" data-review-id="x"><span class="wiI7pd">Translated text</span><span>Translated by Google</span></div>')
         with self.assertRaises(ValueError):
-            self.google().harvest()
+            list(self.google().harvest())
+
+    def test_completed_cards_survive_later_extraction_failure(self):
+        self.page.set_content("""
+            <div class="jftiEf" data-review-id="good"><span class="wiI7pd">Original review</span></div>
+            <div class="jftiEf" data-review-id="bad"><span class="wiI7pd">A</span><span class="wiI7pd">B</span></div>
+        """)
+        with self.assertRaises(ValueError):
+            self.store.add(self.google().harvest())
+        self.store.save('error')
+        import json
+        from pathlib import Path
+        saved = json.loads((Path(self.temp.name) / 'reviews.json').read_text(encoding='utf-8'))
+        self.assertEqual([row['raw_review'] for row in saved], ['Original review'])
 
     def test_gate_detected(self):
         self.page.set_content('<div id="captcha">Please verify</div>')
@@ -94,7 +107,7 @@ class BrowserTests(unittest.TestCase):
         adapter = self.google()
         adapter.open()
         self.assertEqual(adapter.name, 'Food Court')
-        self.assertEqual(adapter.harvest()[0].raw_review, 'Sedap!')
+        self.assertEqual(list(adapter.harvest())[0].raw_review, 'Sedap!')
 
     def test_shopee_pagination_end_and_schema_error(self):
         adapter = Shopee(self.page, self.store, self.args)

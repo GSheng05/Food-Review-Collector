@@ -81,7 +81,7 @@ class GoogleMaps:
                                    extraction='Google Maps rendered original review text')
 
     def harvest(self):
-        results = []
+        # Yield each card so earlier reviews survive a later extraction failure.
         for card in self.page.locator(self.card_selector).all():
             original = card.get_by_role('button', name=re.compile(r'^(See original|Show original|Lihat asal|Lihat yang asal)$', re.I))
             if original.count():
@@ -102,10 +102,9 @@ class GoogleMaps:
             rating_label = stars.first.get_attribute('aria-label') if stars.count() else ''
             match = re.search(r'\d+(?:[.,]\d+)?', rating_label or '')
             rating = float(match.group().replace(',', '.')) if match else None
-            results.append(Review(card.get_attribute('data-review-id'), raw, self.source_url, self.name,
+            yield Review(card.get_attribute('data-review-id'), raw, self.source_url, self.name,
                                   'google_maps', rating, text_or_none(card.locator('.rsqaWe')),
-                                  price_range=google_price_range(card)))
-        return results
+                                  price_range=google_price_range(card))
 
     def advance(self):
         # Scroll the actual review pane, not the entire page or the map canvas.

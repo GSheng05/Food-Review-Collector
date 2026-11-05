@@ -48,6 +48,13 @@ class Review:
     def __post_init__(self):
         if not self._review_id or not self.source_name or not isinstance(self.raw_review, str):
             raise ValueError('A source name, review ID and text string (possibly empty) are required.')
+        if self.review_date:
+            try:
+                self.review_date = datetime.fromisoformat(
+                    self.review_date.replace('Z', '+00:00')
+                ).date().isoformat()
+            except ValueError:
+                pass  # Keep source-relative dates such as "2 weeks ago".
         if not self.collected_at:
             self.collected_at = datetime.now(timezone.utc).isoformat()
 

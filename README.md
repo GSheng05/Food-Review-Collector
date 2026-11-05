@@ -60,7 +60,7 @@ Price Range preserves the source currency and range, for example `RM 20–40`. I
 | Source Platform | Google Reviews or Shopee |
 | Source URL | `source_url` |
 | Rating (1-5) | Source value, otherwise blank |
-| Review Date | Source date; Google may expose a relative date such as `2 weeks ago` |
+| Review Date | YYYY-MM-DD when an exact date is available; relative dates such as `2 weeks ago` are preserved |
 | Price Range | Structured Price per person from the review, otherwise blank |
 | Review Text | Original `raw_review` |
 | Language Classification | Blank for later annotation |

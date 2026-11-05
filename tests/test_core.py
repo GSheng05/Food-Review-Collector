@@ -95,6 +95,27 @@ class CoreTests(unittest.TestCase):
             replace_export(temporary, 'destination')
         self.assertEqual(temporary.replace.call_count, 5)
 
+    def test_review_dates_export_without_time(self):
+        cases = [
+            ('2026-11-05T15:20:30Z', '2026-11-05'),
+            ('2026-11-05T00:20:30.123+08:00', '2026-11-05'),
+            ('2026-11-05 23:59:59-05:00', '2026-11-05'),
+            ('2026-11-05', '2026-11-05'),
+            ('2 weeks ago', '2 weeks ago'),
+            (None, None),
+        ]
+        for source, expected in cases:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                store = Store(directory, URL, 'shopee')
+                row = self.row(review_date=source, collected_at='2026-11-05T16:00:00+00:00')
+                store.add([row])
+                store.save('test')
+                saved = json.loads((Path(directory) / 'reviews.json').read_text(encoding='utf-8'))
+                self.assertEqual(saved[0]['review_date'], expected)
+                self.assertEqual(saved[0]['collected_at'], '2026-11-05T16:00:00+00:00')
+                with (Path(directory) / 'reviews.csv').open(encoding='utf-8-sig', newline='') as stream:
+                    self.assertEqual(next(csv.DictReader(stream))['Review Date'], expected or '')
+
     def payload(self):
         return {'error': 0, 'data': {'ratings': [
             {'cmtid': 1, 'itemid': 456, 'shopid': 123, 'comment': 'Sedap!\n  good 😋', 'rating_star': 5, 'ctime': 1700000000},
@@ -106,7 +127,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].raw_review, 'Sedap!\n  good 😋')
         self.assertEqual(rows[0].rating, 5)
-        self.assertEqual(rows[0].review_date, '2023-11-14T22:13:20+00:00')
+        self.assertEqual(rows[0].review_date, '2023-11-14')
         self.assertEqual(rows[1].raw_review, '')
         self.assertIsNone(rows[1].review_date)
         self.assertIsNone(rows[0].price_range)  # Product listing price is not a reviewer's spend.

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 from playwright.sync_api import sync_playwright
-from reviews.browser import GoogleMaps, Shopee, check_gate, CollectionBlocked
+from reviews.browser import GoogleMaps, Shopee, check_gate, CollectionBlocked, google_price_range
 from reviews.core import Store
 
 
@@ -21,7 +21,7 @@ class BrowserTests(unittest.TestCase):
     def setUp(self):
         self.page = self.browser.new_page()
         self.temp = tempfile.TemporaryDirectory()
-        self.args = SimpleNamespace(name=None, category='food court', delay=1)
+        self.args = SimpleNamespace(name=None, delay=1)
         self.store = Store(self.temp.name, 'https://www.google.com/maps/place/Food', 'google_maps')
 
     def tearDown(self):
@@ -41,6 +41,8 @@ class BrowserTests(unittest.TestCase):
             <button onclick="this.previousElementSibling.textContent='Sedap lah!\\nBest 😋';this.remove()">See original</button>
             <button class="w8nwRe" onclick="this.remove()">More</button>
             <span role="img" aria-label="5 stars"></span><span class="rsqaWe">2 weeks ago</span>
+            <div class="PBK6be"><div>Meal type</div><div>Lunch</div></div>
+            <div class="PBK6be"><div>Price per person</div><div>RM 20–40</div></div>
             <div class="owner-reply">Thank you from owner</div>
           </div>
           <div class="jftiEf" data-review-id="empty"><span role="img" aria-label="3 stars"></span></div>
@@ -51,9 +53,17 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(rows[0].rating, 5)
         self.assertEqual(rows[0].review_date, '2 weeks ago')
         self.assertEqual(rows[1].raw_review, '')
+        self.assertEqual(rows[0].price_range, 'RM 20–40')
+        self.assertIsNone(rows[1].price_range)
         self.assertTrue(adapter.advance())
         self.store.add(rows)
         self.assertEqual(self.store.add(adapter.harvest()), 0)
+
+    def test_price_range_uses_structured_review_metadata_only(self):
+        self.page.set_content('<div class="jftiEf"><span class="wiI7pd">Paid RM 19.90</span><div class="PBK6be"><div>Meal type</div><div>Lunch</div></div></div>')
+        self.assertIsNone(google_price_range(self.page.locator('.jftiEf')))
+        self.page.set_content('<div class="jftiEf"><div class="PBK6be"><div>Harga setiap orang</div><div>RM 40–60</div></div></div>')
+        self.assertEqual(google_price_range(self.page.locator('.jftiEf')), 'RM 40–60')
 
     def test_unresolved_translation_is_not_exported(self):
         self.page.set_content('<div class="jftiEf" data-review-id="x"><span class="wiI7pd">Translated text</span><span>Translated by Google</span></div>')

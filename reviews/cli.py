@@ -18,7 +18,6 @@ def main(argv=None):
     parser.add_argument('url', help='Google Maps place/share URL or Shopee product URL')
     parser.add_argument('--output', help='New/empty output folder (never overwrite an earlier run)')
     parser.add_argument('--limit', type=positive_int, help='Optional review cap. Default: collect until the visible list stalls/ends.')
-    parser.add_argument('--category', default='', help='Your study category, e.g. food court or instant noodles')
     parser.add_argument('--name', help='Optional explicit restaurant/product name')
     parser.add_argument('--interactive', action='store_true', help='Visible browser; manually handle login/verification, then press Enter')
     parser.add_argument('--profile', default='.browser-profile', help='Isolated browser profile directory; keep private')

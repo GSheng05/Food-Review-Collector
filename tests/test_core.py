@@ -39,11 +39,30 @@ class CoreTests(unittest.TestCase):
             with (Path(d) / 'reviews.csv').open(encoding='utf-8-sig', newline='') as f:
                 csvrows = list(csv.reader(f))
             self.assertEqual(csvrows[0], HEADERS)
-            self.assertEqual(csvrows[1][8], text)
-            self.assertEqual(csvrows[1][9:11], ['', ''])
+            self.assertEqual(csvrows[1][HEADERS.index('Review Text')], text)
+            self.assertEqual(csvrows[1][HEADERS.index('Language Classification')], '')
+            self.assertEqual(csvrows[1][HEADERS.index('Code-Switching Type')], '')
             self.assertEqual(store.manifest['empty_reviews'], 1)
             self.assertEqual(store.manifest['repeated_text_reviews'], 1)
             self.assertFalse(store.manifest['all_reviews_verified'])
+
+    def test_public_schema_and_price_range(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(d, URL, 'google_maps')
+            store.add([self.row(price_range='RM 20–40'), self.row('2')])
+            store.save('test')
+            rows = json.loads((Path(d) / 'reviews.json').read_text(encoding='utf-8'))
+            self.assertEqual(set(rows[0]), {'raw_review', 'source_url', 'source_name', 'platform',
+                                          'rating', 'review_date', 'price_range', 'collected_at'})
+            self.assertEqual(rows[0]['price_range'], 'RM 20–40')
+            self.assertIsNone(rows[1]['price_range'])
+            with (Path(d) / 'reviews.csv').open(encoding='utf-8-sig', newline='') as f:
+                exported = list(csv.DictReader(f))
+            self.assertEqual(exported[0]['Price Range'], 'RM 20–40')
+            self.assertEqual(exported[1]['Price Range'], '')
+            for removed in ['Review ID', 'Review URL', 'Product Category']:
+                self.assertNotIn(removed, exported[0])
+            self.assertEqual(store.add([self.row()]), 0)  # Identity still prevents repeat ingestion.
 
     def test_limit_does_not_overrun_batch(self):
         with tempfile.TemporaryDirectory() as d:
@@ -72,6 +91,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rows[0].review_date, '2023-11-14T22:13:20+00:00')
         self.assertEqual(rows[1].raw_review, '')
         self.assertIsNone(rows[1].review_date)
+        self.assertIsNone(rows[0].price_range)  # Product listing price is not a reviewer's spend.
 
     def test_ignore_other_response(self):
         self.assertEqual(shopee_reviews(self.payload(), RESPONSE.replace('itemid=456', 'itemid=999'), URL, 'Food'), [])

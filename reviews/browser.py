@@ -24,6 +24,18 @@ def text_or_none(locator):
     return locator.first.inner_text() if locator.count() else None
 
 
+def google_price_range(card):
+    """The reviewer's structured Price per person, not prices inferred from prose."""
+    for block in card.locator('.PBK6be').all():
+        parts = block.locator(':scope > div')
+        if parts.count() >= 2 and parts.nth(0).inner_text().strip().casefold() in {
+            'price per person', 'harga seorang', 'harga setiap orang', 'harga per orang'
+        }:
+            value = parts.nth(1).inner_text().strip()
+            return value or None
+    return None
+
+
 class GoogleMaps:
     card_selector = '.jftiEf[data-review-id]'
 
@@ -83,7 +95,7 @@ class GoogleMaps:
             rating = float(match.group().replace(',', '.')) if match else None
             results.append(Review(card.get_attribute('data-review-id'), raw, self.source_url, self.name,
                                   'google_maps', rating, text_or_none(card.locator('.rsqaWe')),
-                                  product_category=self.args.category))
+                                  price_range=google_price_range(card)))
         return results
 
     def advance(self):
@@ -147,7 +159,7 @@ class Shopee:
         result = []
         while self.pending:
             url, payload = self.pending.pop(0)
-            rows = shopee_reviews(payload, url, self.source_url, self.name, self.args.category)
+            rows = shopee_reviews(payload, url, self.source_url, self.name)
             result.extend(rows)
             # Count only responses for this product, not recommendation widgets.
             from urllib.parse import parse_qs

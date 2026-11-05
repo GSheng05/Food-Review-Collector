@@ -9,9 +9,12 @@ Give the new collector a Google Maps restaurant URL or Shopee food-product URL. 
 - `raw_review`: original review text, without language filtering, cleaning, spelling correction or translation.
 - `source_url`: restaurant/product page URL.
 - `source_name`: restaurant/product name.
-- Platform, source review ID, rating, review date and collection timestamp when available.
+- `price_range`: the reviewer's structured price-per-person range when available.
+- Platform, rating, review date and collection timestamp when available.
 
-**Status: framework with passing offline extraction tests. Live testing of the supplied Google Maps link showed a limited view without reviews; the Shopee product link redirected to a login/traffic error. Both adapters still need live extraction validation with an accessible signed-in session. Do not assume all reviews were collected.**
+Review ID, review URL and product category are not exported. Source IDs are held only in memory to avoid collecting the same card twice. Source URL remains in the exports.
+
+**Status: framework with passing offline extraction tests. Live testing of the supplied Google Maps link showed a limited view without reviews; the Shopee product link redirected to a login/traffic error. Five full Gepuklah reviews were later collected through the visible browser; bulk CLI extraction and Shopee extraction still need live validation. Do not assume all reviews were collected.**
 
 ## Install (Python 3.10+)
 
@@ -30,8 +33,8 @@ On macOS/Linux, use `python3 -m venv .venv` and `.venv/bin/python`.
 Paste a single **Google Maps place** link, preferably the full `https://www.google.com/maps/place/...` link. Short Maps links are supported. Some `share.google` links open Search instead; the collector follows a Maps place link when available, otherwise requests a Maps link instead of guessing the restaurant.
 
 ```powershell
-.\.venv\Scripts\python.exe collect_reviews.py "PASTE_GOOGLE_MAPS_PLACE_URL" --category "Food court" --limit 200 --interactive
-.\.venv\Scripts\python.exe collect_reviews.py "PASTE_SHOPEE_PRODUCT_URL" --category "Instant noodles" --interactive
+.\.venv\Scripts\python.exe collect_reviews.py "PASTE_GOOGLE_MAPS_PLACE_URL" --limit 200 --interactive
+.\.venv\Scripts\python.exe collect_reviews.py "PASTE_SHOPEE_PRODUCT_URL" --interactive
 ```
 
 Replace the placeholder URL. With `--interactive`, the browser opens and waits for you to handle login, consent or verification and open the intended place/product. Press Enter **in the terminal** to begin collection. You can also open its Reviews tab while paused. The profile is isolated from your personal Chrome profile and stored in `.browser-profile/`; never share or commit it.
@@ -44,26 +47,27 @@ Each run gets a new folder under `output/`. `--output PATH` chooses a new/empty 
 
 ## Output
 
+Price Range preserves the source currency and range, for example `RM 20–40`. It is the reviewer's stated spend per person, not a restaurant-wide estimate or a number inferred from their prose. Shopee reviews currently have no equivalent verified field in this adapter, so their price range is blank; a current listing price is not substituted for historical reviewer spending.
+
 `reviews.json` is the authoritative UTF-8 raw dataset. Empty text reviews and identical text from different review IDs remain in the file. Only repeated observations of the **same source review ID on the same page** are suppressed during scrolling. Text is preserved as returned by the browser DOM (Maps) or the original comment response (Shopee); DOM text is not byte-for-byte original submission HTML.
 
-`reviews.csv` has the twelve columns in the assignment template's **Self-Collected Data** sheet:
+`reviews.csv` uses the revised collection columns requested by the user (the original assignment template is not modified):
 
 | Column | Value |
 |---|---|
-| Review ID | Platform review ID |
 | Data Origin | Self-Collected (Real) |
-| Product Category | Your `--category` value |
 | Product / Eatery Name | `source_name` |
 | Source Platform | Google Reviews or Shopee |
 | Source URL | `source_url` |
 | Rating (1-5) | Source value, otherwise blank |
 | Review Date | Source date; Google may expose a relative date such as `2 weeks ago` |
+| Price Range | Structured Price per person from the review, otherwise blank |
 | Review Text | Original `raw_review` |
 | Language Classification | Blank for later annotation |
 | Code-Switching Type | Blank for later annotation |
 | Notes / Annotator Comments | Blank for later annotation |
 
-CSV text is deliberately unmodified, including values beginning with `=`, `+`, `-`, or `@`. Import with Excel **Data → From Text/CSV**, treating the review and ID columns as **Text**, instead of double-clicking the CSV, so untrusted review text is not interpreted as a formula and long IDs retain precision. The supplied workbook is not edited and its example rows are not real collected data.
+CSV text is deliberately unmodified, including values beginning with `=`, `+`, `-`, or `@`. Import with Excel **Data → From Text/CSV**, treating the review text column as **Text**, instead of double-clicking the CSV, so untrusted review text is not interpreted as a formula. The supplied workbook is not edited and its example rows are not real collected data.
 
 `manifest.json` records counts, empty/repeated texts, repeated page observations, errors and the stop reason. `all_reviews_verified` remains **false**: neither visible pagination nor an idle panel proves that the platform exposed every review.
 
@@ -86,7 +90,7 @@ The original crawler downloads HTML, follows links and extracts headings/first p
 ```text
 URL → source validation → Google Maps / Shopee adapter
     → original Review records → source-ID deduplication
-    → checkpointed JSON + template-compatible CSV + run manifest
+    → checkpointed JSON + revised CSV + run manifest
 ```
 
 Google Maps: open Reviews, select original-language text when translation is displayed, expand More, extract individual cards, then scroll the review pane. Never include owner replies. Relative dates are kept as supplied, not guessed as exact dates.

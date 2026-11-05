@@ -34,25 +34,24 @@ def shopee_ids(url):
 
 @dataclass
 class Review:
-    review_id: str
+    _review_id: str  # In-memory identity only; never exported.
     raw_review: str
     source_url: str
     source_name: str
     platform: str
     rating: float | None = None
     review_date: str | None = None
-    review_url: str | None = None
-    product_category: str = ''
+    price_range: str | None = None
     collected_at: str = ''
 
     def __post_init__(self):
-        if not self.review_id or not self.source_name or not isinstance(self.raw_review, str):
+        if not self._review_id or not self.source_name or not isinstance(self.raw_review, str):
             raise ValueError('A source name, review ID and text string (possibly empty) are required.')
         if not self.collected_at:
             self.collected_at = datetime.now(timezone.utc).isoformat()
 
 
-def shopee_reviews(payload, response_url, source_url, source_name, category=''):
+def shopee_reviews(payload, response_url, source_url, source_name):
     """Parse only ratings delivered to the browser for the requested item/shop."""
     shop, item = shopee_ids(source_url)
     query = parse_qs(urlsplit(response_url).query)
@@ -72,12 +71,12 @@ def shopee_reviews(payload, response_url, source_url, source_name, category=''):
         timestamp = row.get('ctime')
         date = datetime.fromtimestamp(timestamp, timezone.utc).isoformat() if isinstance(timestamp, (int, float)) else None
         result.append(Review(str(row['cmtid']), row['comment'], source_url, source_name,
-                             'shopee', row.get('rating_star'), date, product_category=category))
+                             'shopee', row.get('rating_star'), date))
     return result
 
 
-HEADERS = ['Review ID', 'Data Origin', 'Product Category', 'Product / Eatery Name',
-           'Source Platform', 'Source URL', 'Rating (1-5)', 'Review Date', 'Review Text',
+HEADERS = ['Data Origin', 'Product / Eatery Name',
+           'Source Platform', 'Source URL', 'Rating (1-5)', 'Review Date', 'Price Range', 'Review Text',
            'Language Classification', 'Code-Switching Type', 'Notes / Annotator Comments']
 
 
@@ -94,7 +93,7 @@ class Store:
     def add(self, rows):
         count = 0
         for row in rows:
-            key = (row.platform, row.source_url, row.review_id)
+            key = (row.platform, row.source_url, row._review_id)
             if key in self.rows:
                 self.manifest['repeat_observations'] += 1
                 continue
@@ -115,7 +114,7 @@ class Store:
         texts = [r.raw_review for r in self.rows.values()]
         self.manifest.update(collected_reviews=len(texts), empty_reviews=sum(not t.strip() for t in texts),
                              repeated_text_reviews=len(texts) - len(set(texts)))
-        for name, value in [('reviews.json', [asdict(r) for r in self.rows.values()]), ('manifest.json', self.manifest)]:
+        for name, value in [('reviews.json', [{k: v for k, v in asdict(r).items() if not k.startswith('_')} for r in self.rows.values()]), ('manifest.json', self.manifest)]:
             tmp = self.directory / (name + '.tmp')
             tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
             tmp.replace(self.directory / name)
@@ -124,7 +123,7 @@ class Store:
             writer = csv.writer(stream)
             writer.writerow(HEADERS)
             for r in self.rows.values():
-                writer.writerow([r.review_id, 'Self-Collected (Real)', r.product_category, r.source_name,
+                writer.writerow(['Self-Collected (Real)', r.source_name,
                                  'Google Reviews' if r.platform == 'google_maps' else 'Shopee', r.source_url,
-                                 r.rating, r.review_date, r.raw_review, '', '', ''])
+                                 r.rating, r.review_date, r.price_range, r.raw_review, '', '', ''])
         tmp.replace(self.directory / 'reviews.csv')

@@ -44,6 +44,7 @@ class Review:
     review_date: str | None = None
     price_range: str | None = None
     collected_at: str = ''
+    language_classification: str = ''
 
     def __post_init__(self):
         if not self._review_id or not self.source_name or not isinstance(self.raw_review, str):
@@ -102,24 +103,34 @@ def replace_export(temporary, destination):
 
 
 class Store:
-    def __init__(self, directory, input_url, platform, limit=None):
+    def __init__(self, directory, input_url, platform, limit=None, classifier=None):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.rows = {}
+        self.seen = set()
+        self.classifier = classifier
         self.limit = limit
         self.manifest = {'input_url': input_url, 'platform': platform, 'status': 'running',
                          'all_reviews_verified': False, 'started_at': datetime.now(timezone.utc).isoformat(),
-                         'stop_reason': None, 'warnings': [], 'repeat_observations': 0}
+                         'stop_reason': None, 'warnings': [], 'repeat_observations': 0,
+                         'examined_reviews': 0, 'skipped_without_malay': 0}
 
     def add(self, rows):
         count = 0
         for row in rows:
             key = (row.platform, row.source_url, row._review_id)
-            if key in self.rows:
+            if key in self.seen:
                 self.manifest['repeat_observations'] += 1
                 continue
             if self.full:
                 break
+            self.seen.add(key)
+            self.manifest['examined_reviews'] += 1
+            if self.classifier:
+                row.language_classification = self.classifier.classify(row.raw_review) or ''
+                if row.language_classification not in {'Malay', 'Code-switched'}:
+                    self.manifest['skipped_without_malay'] += 1
+                    continue
             self.rows[key] = row
             count += 1
         return count
@@ -146,5 +157,5 @@ class Store:
             for r in self.rows.values():
                 writer.writerow(['Self-Collected (Real)', r.source_name,
                                  'Google Reviews' if r.platform == 'google_maps' else 'Shopee', r.source_url,
-                                 r.rating, r.review_date, r.price_range, r.raw_review, '', '', ''])
+                                 r.rating, r.review_date, r.price_range, r.raw_review, r.language_classification, '', ''])
         replace_export(tmp, self.directory / 'reviews.csv')

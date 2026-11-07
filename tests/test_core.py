@@ -53,7 +53,7 @@ class CoreTests(unittest.TestCase):
             store.save('test')
             rows = json.loads((Path(d) / 'reviews.json').read_text(encoding='utf-8'))
             self.assertEqual(set(rows[0]), {'raw_review', 'source_url', 'source_name', 'platform',
-                                          'rating', 'review_date', 'price_range', 'collected_at'})
+                                          'rating', 'review_date', 'price_range', 'collected_at', 'language_classification'})
             self.assertEqual(rows[0]['price_range'], 'RM 20–40')
             self.assertIsNone(rows[1]['price_range'])
             with (Path(d) / 'reviews.csv').open(encoding='utf-8-sig', newline='') as f:

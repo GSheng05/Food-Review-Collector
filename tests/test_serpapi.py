@@ -28,6 +28,12 @@ def page(start, stop, token=None):
 
 
 class SerpApiTests(unittest.TestCase):
+    def setUp(self):
+        classifier = patch('reviews.language.MalayClassifier')
+        self.mock_classifier = classifier.start().return_value
+        self.mock_classifier.classify.return_value = 'Code-switched'
+        self.addCleanup(classifier.stop)
+
     def test_cli_pagination_caps_at_50_and_keeps_identical_text(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp) / 'output'

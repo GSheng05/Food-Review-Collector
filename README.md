@@ -6,7 +6,7 @@ Their usage is in [README-crawler.md](README-crawler.md).
 
 Give the new collector a Google Maps restaurant URL or Shopee food-product URL. It attempts to walk the reviews exposed by the website and exports:
 
-- `raw_review`: original review text, without language filtering, cleaning, spelling correction or translation.
+- `raw_review`: original review text, preserved verbatim for reviews passing the Malay-word filter.
 - `source_url`: restaurant/product page URL.
 - `source_name`: restaurant/product name.
 - `price_range`: the reviewer's structured price-per-person range when available.
@@ -14,7 +14,7 @@ Give the new collector a Google Maps restaurant URL or Shopee food-product URL. 
 
 Review ID, review URL and product category are not exported. Source IDs are held only in memory to avoid collecting the same card twice. Source URL remains in the exports.
 
-**Status: SerpAPI live Google Maps collection is validated. The current SerpAPI default is 50 written reviews. Browser collection depends on the reviews exposed in that session. Shopee bulk collection still needs live validation.**
+**Status: SerpAPI live Google Maps collection is validated. The current SerpAPI default is 50 qualifying reviews. Browser collection depends on the reviews exposed in that session. Shopee bulk collection still needs live validation.**
 
 ## Install (Python 3.10+)
 
@@ -49,7 +49,7 @@ Each run gets a new folder under `output/`. `--output PATH` chooses a new/empty 
 
 Price Range preserves the source currency and range, for example `RM 20–40`. It is the reviewer's stated spend per person, not a restaurant-wide estimate or a number inferred from their prose. Shopee reviews currently have no equivalent verified field in this adapter, so their price range is blank; a current listing price is not substituted for historical reviewer spending.
 
-`reviews.json` is the authoritative UTF-8 raw dataset. Empty text reviews and identical text from different review IDs remain in the file. Only repeated observations of the **same source review ID on the same page** are suppressed during scrolling. Text is preserved as returned by the browser DOM (Maps) or the original comment response (Shopee); DOM text is not byte-for-byte original submission HTML.
+`reviews.json` is the authoritative UTF-8 raw dataset. Reviews must contain a detected Malay word. Identical text from different review IDs is retained. Only repeated observations of the **same source review ID on the same page** are suppressed during scrolling. Text is preserved as returned by the browser DOM (Maps) or the original comment response (Shopee); DOM text is not byte-for-byte original submission HTML.
 
 `reviews.csv` uses the revised collection columns requested by the user (the original assignment template is not modified):
 
@@ -63,7 +63,7 @@ Price Range preserves the source currency and range, for example `RM 20–40`. I
 | Review Date | YYYY-MM-DD when an exact date is available; relative dates such as `2 weeks ago` are preserved |
 | Price Range | Structured Price per person from the review, otherwise blank |
 | Review Text | Original `raw_review` |
-| Language Classification | Blank for later annotation |
+| Language Classification | Provisional Malay or Code-switched label |
 | Code-Switching Type | Blank for later annotation |
 | Notes / Annotator Comments | Blank for later annotation |
 
@@ -158,13 +158,13 @@ shown in the open tab and saves the export locally.
 ## SerpAPI Google Maps collection
 
 Store your API key in .serpapi-key in this project folder, containing only the key, or set
-SERPAPI_API_KEY. The key file is ignored by Git. No extra Python dependency is needed.
+SERPAPI_API_KEY. The key file is ignored by Git. Install requirements-language.txt for the Malay-word filter.
 
 ~~~powershell
 .\.venv\Scripts\python.exe collect_reviews.py "https://maps.app.goo.gl/R6RSAgnPVpPbWjtq5" --provider serpapi --limit 50
 ~~~
 
-SerpAPI mode defaults to 50 written reviews in relevance order. It follows pagination and
+SerpAPI mode defaults to 50 qualifying reviews in relevance order. It follows pagination and
 checkpoints CSV/JSON after each page, with at most 10 API requests per run (--max-pages).
 Requests may consume API credits. The manifest records request counts and the stop reason.
 
@@ -174,3 +174,22 @@ Review IDs stay in memory. Price Range uses details.price_per_person when availa
 Short Maps links are resolved to a full place URL first. Outputs are under output/.
 
 Reference: https://serpapi.com/google-maps-reviews-api
+
+## Malay-word filtering
+
+Install the language dependencies after pulling updates:
+
+~~~powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-language.txt
+~~~
+
+The first run downloads Malaya's FastText model. Collection and browser imports now require at
+least one word labeled MS by Malaya. MS plus EN is labeled Code-switched; MS alone is Malay.
+English-only and unrecognized reviews are skipped. JSON includes language_classification and
+CSV fills the existing Language Classification column. The raw review is preserved.
+
+The limit counts saved, qualifying reviews. SerpAPI follows pages up to --max-pages (default 10).
+The manifest records examined_reviews and skipped_without_malay. Model labels are provisional,
+especially for shared vocabulary, names and slang. Review them for assignment annotation.
+
+Shared Malay/English dictionary words are treated as English to avoid false matches such as "was". This conservative rule may miss Malay uses of shared words. Labels require human review.

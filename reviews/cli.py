@@ -82,7 +82,14 @@ def main(argv=None):
     output = Path(args.output or ('output/' + platform + '-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')))
     if output.exists() and any(output.iterdir()):
         parser.error('Output directory is not empty. Choose a new folder to preserve previous data.')
-    store = Store(output, args.url, platform, args.limit)
+    from .language import MalayClassifier
+    try:
+        classifier = MalayClassifier()
+    except RuntimeError as exc:
+        parser.error(str(exc))
+    store = Store(output, args.url, platform, args.limit, classifier=classifier)
+    store.manifest.update(language_filter='At least one Malaya MS word label',
+                          language_labels='Provisional Malaya word-level predictions')
     if args.import_google:
         store.add(imported_rows)
         browser_reason = browser_export.get('stop_reason')
@@ -137,10 +144,11 @@ def collect_browser(store, args, platform):
             deadline = time.monotonic() + args.max_minutes * 60
             while True:
                 check_gate(page)
+                examined_before = store.manifest["examined_reviews"]
                 added = store.add(adapter.harvest())
                 store.save()
                 print(f'Collected {len(store.rows)} reviews (+{added})', flush=True)
-                idle = 0 if added else idle + 1
+                idle = 0 if store.manifest["examined_reviews"] > examined_before else idle + 1
                 if store.full:
                     reason = 'user_limit'
                     break

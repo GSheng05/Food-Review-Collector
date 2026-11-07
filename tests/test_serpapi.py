@@ -1,4 +1,5 @@
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -148,6 +149,37 @@ class SerpApiTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]['raw_review'], '  Sedap lah!\nGood \U0001f60b')
             self.assertFalse(any('sentiment' in key.lower() for key in rows[0]))
+
+    def test_successful_no_reviews_keyword_response_continues_to_next_term(self):
+        empty = {'search_metadata': {'status': 'Success'},
+                 'search_information': {'reviews_results_state': 'No reviews'}}
+        responses = [page(0, 5), empty, page(5, 7)]
+        with tempfile.TemporaryDirectory() as temp:
+            def response(*args, **kwargs):
+                return io.BytesIO(json.dumps(responses.pop(0)).encode())
+            with patch('reviews.serpapi.load_key', return_value='private'), \
+                 patch('reviews.serpapi.urlopen', side_effect=response), \
+                 patch('reviews.serpapi.time.sleep'):
+                result = main([URL, '--provider', 'serpapi', '--review-keywords',
+                               'sedap,teruk,bagus', '--output', temp])
+            self.assertEqual(result, 0)
+            manifest = json.loads((Path(temp) / 'manifest.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['collected_reviews'], 7)
+            self.assertEqual(manifest['empty_keyword_searches'], ['teruk'])
+            self.assertEqual(manifest['api_requests'], 3)
+
+    def test_unexplained_missing_review_list_still_fails(self):
+        from reviews.serpapi import parse_reviews
+        with self.assertRaises(ValueError):
+            list(parse_reviews({'search_metadata': {'status': 'Success'}}, URL, 'Test', {}))
+
+    def test_no_reviews_signal_does_not_hide_api_errors(self):
+        payload = {'error': 'Invalid credentials',
+                   'search_metadata': {'status': 'Success'},
+                   'search_information': {'reviews_results_state': 'No reviews'}}
+        with patch('reviews.serpapi.urlopen', return_value=io.BytesIO(json.dumps(payload).encode())):
+            with self.assertRaises(RuntimeError):
+                request_page('private', {'query': 'teruk'})
 
     def test_partial_result_survives_api_failure(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -257,3 +257,5 @@ It never searches the full upstream lexicon automatically. No live requests are 
 
 Keyword selection biases sampling toward explicit opinion words; document that collection
 method when building your later NLP training dataset.
+
+Successful keyword responses marked No reviews are skipped, even when SerpAPI omits the reviews field. The manifest lists them in empty_keyword_searches. Unexpected schemas and API errors still stop the run.

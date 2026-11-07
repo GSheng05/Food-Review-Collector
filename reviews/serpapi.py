@@ -57,6 +57,11 @@ def request_page(key, params):
     if (isinstance(payload, dict) and params.get('query')
             and payload.get('error') == "Google hasn't returned any results for this query."):
         return {'reviews': []}
+    if (isinstance(payload, dict) and params.get('query') and not payload.get('error')
+            and (payload.get('search_metadata') or {}).get('status') == 'Success'
+            and (payload.get('search_information') or {}).get('reviews_results_state') == 'No reviews'
+            and payload.get('reviews') is None):
+        payload['reviews'] = []
     if not isinstance(payload, dict) or payload.get('error'):
         raise RuntimeError('SerpAPI reported an API error. Check your SerpAPI dashboard for details.')
     return payload
@@ -106,6 +111,7 @@ def collect(store, args, key):
     keywords = args.review_keywords or []
     store.manifest['review_keywords'] = keywords
     store.manifest['keyword_library'] = args.keyword_library
+    store.manifest['empty_keyword_searches'] = []
     for index in range(args.max_pages):
         if store.manifest['api_requests'] >= args.max_pages:
             return 'api_page_limit'
@@ -144,6 +150,9 @@ def collect(store, args, key):
                                          'Supply --name with the verified restaurant name.')
             source_name = args.name or title
             store.manifest.update(source_name=source_name, provider_place_name=title)
+        if keywords and payload.get('reviews') == []:
+            store.manifest['empty_keyword_searches'].append(params['query'])
+            print(f'No reviews for keyword {params["query"]!r}; continuing.', flush=True)
         store.add(parse_reviews(payload, source_url, source_name, store.manifest))
         store.save()
         print(f'Collected {len(store.rows)}/{store.limit} written reviews '

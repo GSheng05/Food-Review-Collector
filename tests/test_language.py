@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 from reviews.core import Review, Store
-from reviews.language import MalayClassifier
+from reviews.language import MalayClassifier, text_without_names
 
 
 class LanguageTests(unittest.TestCase):
@@ -39,3 +39,36 @@ class LanguageTests(unittest.TestCase):
             with (Path(directory) / 'reviews.csv').open(encoding='utf-8-sig', newline='') as stream:
                 table = list(csv.DictReader(stream))
             self.assertEqual([r['Language Classification'] for r in table], ['Malay', 'Code-switched'])
+
+
+    def test_food_phrases_and_source_names_are_masked_with_boundaries(self):
+        text = "The AYAM-GEPUK at Gepuklah by mingchuun was sedap."
+        self.assertEqual(text_without_names(text, "Gepuklah by mingchuun"),
+                         "The   at   was sedap.")
+        self.assertEqual(text_without_names("Gepuklah was good", "Gepuklah by mingchuun"),
+                         "  was good")
+        self.assertEqual(text_without_names("Saya suka ayam ini"), "Saya suka ayam ini")
+        self.assertEqual(text_without_names("nasi lemaknya"), "nasi lemaknya")
+        self.assertEqual(text_without_names("Ayam gepuk sedap"), "  sedap")
+        self.assertEqual(text_without_names("Roti canai murah"), "  murah")
+        self.assertEqual(text_without_names("Food at Kedai Bahagia was good", "Kedai Bahagia"),
+                         "Food at   was good")
+
+    def test_only_names_does_not_call_detector(self):
+        model = MalayClassifier.__new__(MalayClassifier)
+        model.detector = Mock()
+        self.assertIsNone(model.classify("Gepuklah ayam gepuk", source_name="Gepuklah by mingchuun"))
+        model.detector.predict.assert_not_called()
+
+    def test_store_passes_source_name_without_modifying_raw_text(self):
+        model = Mock()
+        model.classify.return_value = "Code-switched"
+        text = "The ayam gepuk at Gepuklah is sedap!"
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory, "https://www.google.com/maps/place/Test", "google_maps", classifier=model)
+            store.add([Review("1", text, "https://www.google.com/maps/place/Test",
+                              "Gepuklah by mingchuun", "google_maps")])
+            model.classify.assert_called_once_with(text, source_name="Gepuklah by mingchuun")
+            store.save("test")
+            rows = json.loads((Path(directory) / "reviews.json").read_text(encoding="utf-8"))
+            self.assertEqual(rows[0]["raw_review"], text)

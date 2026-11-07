@@ -1,0 +1,51 @@
+{
+  "food_names": [
+    "ayam gepuk",
+    "ayam penyet",
+    "ayam goreng",
+    "ayam goreng berempah",
+    "ayam percik",
+    "ayam masak merah",
+    "nasi lemak",
+    "nasi goreng",
+    "nasi putih",
+    "nasi ayam",
+    "nasi kandar",
+    "nasi kerabu",
+    "nasi dagang",
+    "nasi minyak",
+    "mee goreng",
+    "mi goreng",
+    "mee kari",
+    "mee rebus",
+    "maggi goreng",
+    "char kuey teow",
+    "char kway teow",
+    "roti canai",
+    "roti telur",
+    "roti john",
+    "teh tarik",
+    "teh ais",
+    "kopi ais",
+    "sambal gajus",
+    "sambal hijau",
+    "sambal merah",
+    "sambal belacan",
+    "ikan bakar",
+    "ikan goreng",
+    "sotong goreng",
+    "sup tulang",
+    "rendang",
+    "satay",
+    "sate",
+    "laksa",
+    "cendol",
+    "tempeh"
+  ],
+  "source_aliases": {
+    "Gepuklah by mingchuun": [
+      "Gepuklah",
+      "mingchuun"
+    ]
+  }
+}

@@ -1,9 +1,46 @@
 """Provisional Malay/English word labels using Malaya's dictionary and model."""
 import re
+import json
+from functools import lru_cache
+from pathlib import Path
+
+
+@lru_cache(maxsize=128)
+def name_pattern(source_name):
+    rules = json.loads(Path(__file__).with_name('language_names.json').read_text(encoding='utf-8'))
+    food_names = rules['food_names']
+    source_aliases = rules['source_aliases']
+    if (not isinstance(food_names, list) or not isinstance(source_aliases, dict)
+            or any(not isinstance(name, str) or not name.strip() for name in food_names)
+            or any(not isinstance(key, str) or not isinstance(aliases, list)
+                   or any(not isinstance(alias, str) or not alias.strip() for alias in aliases)
+                   for key, aliases in source_aliases.items())):
+        raise ValueError('Invalid food names or source aliases in language_names.json.')
+    names = list(food_names)
+    if source_name.strip():
+        names.append(source_name)
+        # A title such as "Gepuklah by mingchuun" also identifies "Gepuklah".
+        base_name = re.split(r'\s+by\s+|\s*\(', source_name, maxsplit=1, flags=re.I)[0].strip()
+        if base_name:
+            names.append(base_name)
+        for title, aliases in source_aliases.items():
+            if title.casefold() == source_name.casefold():
+                names.extend(aliases)
+    expressions = []
+    for name in names:
+        parts = re.split(r'\s+', name.strip())
+        expressions.append(r'(?<!\w)' + r'[\s-]+'.join(re.escape(part) for part in parts) + r'(?!\w)')
+    return re.compile('|'.join(sorted(expressions, key=len, reverse=True)) or r'(?!)', re.I)
+
+
+def text_without_names(text, source_name=''):
+    """Mask complete names for detection only. Never alter the exported review."""
+    return name_pattern(source_name).sub(' ', text)
 
 
 class MalayClassifier:
     def __init__(self):
+        name_pattern("")
         try:
             import malaya
             import enchant
@@ -17,7 +54,8 @@ class MalayClassifier:
                 'first-run model download. Details: ' + type(exc).__name__
             ) from exc
 
-    def classify(self, text):
+    def classify(self, text, source_name=""):
+        text = text_without_names(text, source_name)
         words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)*", text.casefold())
         if not words:
             return None

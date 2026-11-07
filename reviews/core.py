@@ -127,7 +127,7 @@ class Store:
             self.seen.add(key)
             self.manifest['examined_reviews'] += 1
             if self.classifier:
-                row.language_classification = self.classifier.classify(row.raw_review) or ''
+                row.language_classification = self.classifier.classify(row.raw_review, source_name=row.source_name) or ''
                 if row.language_classification not in {'Malay', 'Code-switched'}:
                     self.manifest['skipped_without_malay'] += 1
                     continue

@@ -193,3 +193,19 @@ The manifest records examined_reviews and skipped_without_malay. Model labels ar
 especially for shared vocabulary, names and slang. Review them for assignment annotation.
 
 Shared Malay/English dictionary words are treated as English to avoid false matches such as "was". This conservative rule may miss Malay uses of shared words. Labels require human review.
+
+## Food and restaurant names in language detection
+
+The classifier masks the complete source restaurant/product name, its base name before "by"
+or a parenthesized branch suffix, and listed food names before checking language. Saved
+review text remains complete. A name alone does not count as Malay or English evidence.
+
+Edit reviews/language_names.json to add food_names (complete dish/drink phrases) and
+source_aliases (short names keyed by the source's full name). Matching ignores case and accepts
+spaces or hyphens between words. Restart the collector after editing. For example, ayam gepuk
+is ignored as a phrase while ayam in "Saya suka ayam ini" remains available for detection.
+The bundled list is a starting point; add menu names and spelling variants for each source.
+
+"The ayam gepuk was delicious" is English and skipped. "The ayam gepuk was sedap" is
+Code-switched and saved. "Ayam gepuk sangat sedap" is Malay and saved. Predictions still
+need annotation review.

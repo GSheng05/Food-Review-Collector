@@ -123,6 +123,32 @@ class SerpApiTests(unittest.TestCase):
                                        '--max-pages', '1', '--output', temp]), 2)
             self.assertEqual(request.call_count, 1)
 
+    def test_library_keyword_search_preserves_text_and_has_no_sentiment_labels(self):
+        from reviews.search_keywords import load_food_keywords
+        terms = load_food_keywords()
+        self.assertEqual(len(terms), len(set(terms)))
+        self.assertIn('mantap', terms)
+        self.assertIn('kecewa', terms)
+        with tempfile.TemporaryDirectory() as temp:
+            requests = []
+            def response(key, params):
+                requests.append(dict(params))
+                return page(0, 2)
+            with patch('reviews.serpapi.load_key', return_value='private'), \
+                 patch('reviews.serpapi.request_page', side_effect=response), \
+                 patch('reviews.serpapi.time.sleep'):
+                self.assertEqual(main([URL, '--provider', 'serpapi', '--keyword-library', 'food',
+                                       '--review-keywords', 'sedap,extra', '--max-pages', '2',
+                                       '--output', temp]), 2)
+            self.assertEqual([r['query'] for r in requests], terms[:2])
+            manifest = json.loads((Path(temp) / 'manifest.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['review_keywords'], terms + ['extra'])
+            self.assertEqual(manifest['keyword_library'], 'food')
+            rows = json.loads((Path(temp) / 'reviews.json').read_text(encoding='utf-8'))
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]['raw_review'], '  Sedap lah!\nGood \U0001f60b')
+            self.assertFalse(any('sentiment' in key.lower() for key in rows[0]))
+
     def test_partial_result_survives_api_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp) / 'output'

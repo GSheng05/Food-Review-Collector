@@ -231,3 +231,29 @@ Keyword responses may omit place_info. The collector fetches the restaurant name
 the same place ID without a keyword, then reuses it across keyword searches. This extra request
 counts toward --max-pages. Use --name "Verified restaurant name" to provide the name explicitly.
 For 10 keywords, --max-pages 11 permits 10 searches plus one metadata lookup.
+
+## Food-review keyword library
+
+~~~powershell
+.\.venv\Scripts\python.exe collect_reviews.py "RESTAURANT_MAPS_URL" --provider serpapi --keyword-library food --limit 50 --max-pages 25
+~~~
+
+The food library supplies 21 query terms: 16 food/service-relevant terms selected from SentiLexM
+and five manually added supplements, including mantap and negated phrases. The selection
+interleaves favorable and unfavorable search words. It supplies keywords only; no sentiment
+scores or positive/negative labels are assigned to reviews or added to CSV/JSON.
+
+Edit reviews/food_search_keywords.json to customize the list. The keywords field contains
+the SentiLexM selection and supplemental_keywords contains the manual additions. Source
+revision is recorded there. SentiLexM is MIT licensed; its license is included in
+docs/SentiLexM-LICENSE.txt. Source: https://github.com/AsyrafAzlan/SentiLexM
+
+You can combine --keyword-library food with --review-keywords "additional,terms"; repeated
+terms are removed. Searches use at most five reviews per keyword, and the existing Malay
+filter, original-text preservation and review deduplication still apply. The 50-review target
+is a ceiling. --max-pages 25 permits the current 21 searches plus a name lookup if required.
+The program stops early on reaching the saved-review limit. Actual requests may consume credits.
+It never searches the full upstream lexicon automatically. No live requests are made by tests.
+
+Keyword selection biases sampling toward explicit opinion words; document that collection
+method when building your later NLP training dataset.

@@ -105,6 +105,7 @@ def collect(store, args, key):
     deadline = time.monotonic() + args.max_minutes * 60
     keywords = args.review_keywords or []
     store.manifest['review_keywords'] = keywords
+    store.manifest['keyword_library'] = args.keyword_library
     for index in range(args.max_pages):
         if store.manifest['api_requests'] >= args.max_pages:
             return 'api_page_limit'

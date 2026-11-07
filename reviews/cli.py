@@ -51,6 +51,7 @@ def main(argv=None):
     mode.add_argument('--interactive', action='store_true', help='Visible browser; manually handle login/verification, then press Enter')
     parser.add_argument('--provider', choices=['browser', 'serpapi'], default='browser')
     parser.add_argument('--serpapi-key-file', default='.serpapi-key', help='Local key file, ignored by Git')
+    parser.add_argument('--keyword-library', choices=['food'], help='Use the bundled food-review search vocabulary')
     parser.add_argument('--review-keywords', help='Comma-separated review search terms, e.g. sedap,pedas; SerpAPI returns at most 5 per term')
     parser.add_argument('--max-pages', type=positive_int, default=10, help='Maximum SerpAPI requests per run')
     parser.add_argument('--profile', default='.browser-profile', help='Isolated browser profile directory; keep private')
@@ -71,10 +72,24 @@ def main(argv=None):
         platform = platform_for(args.url)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
-    if args.review_keywords:
-        args.review_keywords = list(dict.fromkeys(word.strip() for word in args.review_keywords.split(',') if word.strip()))
-        if not args.review_keywords or args.provider != 'serpapi' or args.import_google:
-            parser.error('--review-keywords requires SerpAPI and at least one nonempty search term.')
+    if args.review_keywords is not None or args.keyword_library:
+        if args.provider != 'serpapi' or args.import_google:
+            parser.error('Keyword searches require a SerpAPI Google Maps URL.')
+        terms = []
+        if args.keyword_library:
+            from .search_keywords import load_food_keywords
+            try:
+                terms.extend(load_food_keywords())
+            except (ValueError, OSError) as exc:
+                parser.error(str(exc))
+        if args.review_keywords is not None:
+            manual_terms = [word.strip().casefold() for word in args.review_keywords.split(',') if word.strip()]
+            if not manual_terms:
+                parser.error('--review-keywords requires at least one nonempty search term.')
+            terms.extend(manual_terms)
+        args.review_keywords = list(dict.fromkeys(terms))
+        print(f'Loaded {len(args.review_keywords)} review search terms. '
+              f'Request cap: {args.max_pages} (includes any restaurant-name lookup).')
     if args.provider == 'serpapi':
         if args.import_google or platform != 'google_maps':
             parser.error('SerpAPI requires a Google Maps URL and cannot be combined with --import-google.')

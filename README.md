@@ -226,3 +226,8 @@ guarantee of 50. Duplicate review IDs across searches are suppressed. The origin
 text is preserved. --max-pages caps the total requests, including keyword searches.
 The manifest records review_keywords and keyword_search_end when all terms were searched.
 Omit --review-keywords to use normal paginated collection.
+
+Keyword responses may omit place_info. The collector fetches the restaurant name once using
+the same place ID without a keyword, then reuses it across keyword searches. This extra request
+counts toward --max-pages. Use --name "Verified restaurant name" to provide the name explicitly.
+For 10 keywords, --max-pages 11 permits 10 searches plus one metadata lookup.

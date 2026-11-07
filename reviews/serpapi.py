@@ -54,6 +54,9 @@ def request_page(key, params):
         raise RuntimeError('SerpAPI connection failed. Check your network and try again.') from None
     except ValueError:
         raise RuntimeError('SerpAPI returned invalid JSON.') from None
+    if (isinstance(payload, dict) and params.get('query')
+            and payload.get('error') == "Google hasn't returned any results for this query."):
+        return {'reviews': []}
     if not isinstance(payload, dict) or payload.get('error'):
         raise RuntimeError('SerpAPI reported an API error. Check your SerpAPI dashboard for details.')
     return payload
@@ -103,6 +106,8 @@ def collect(store, args, key):
     keywords = args.review_keywords or []
     store.manifest['review_keywords'] = keywords
     for index in range(args.max_pages):
+        if store.manifest['api_requests'] >= args.max_pages:
+            return 'api_page_limit'
         if keywords:
             params['query'] = keywords[index]
         params['num'] = min(5 if keywords else 60, store.limit - len(store.rows))
@@ -115,7 +120,27 @@ def collect(store, args, key):
             info = payload.get('place_info') or {}
             title = info.get('title')
             if not isinstance(title, str) or not title.strip():
-                raise ValueError('SerpAPI did not identify the restaurant.')
+                if args.name:
+                    title = None
+                else:
+                    if store.manifest['api_requests'] >= args.max_pages:
+                        store.manifest['warnings'].append(
+                            'The keyword response omitted the restaurant name. Increase --max-pages '
+                            'to allow a metadata lookup, or supply --name.')
+                        return 'api_page_limit'
+                    metadata_params = {'engine': 'google_maps_reviews', 'data_id': data_id,
+                                       'hl': 'en', 'num': 1}
+                    time.sleep(args.delay)
+                    store.manifest['api_requests'] += 1
+                    store.manifest['metadata_lookup_requests'] = 1
+                    metadata = request_page(key, metadata_params)
+                    metadata_id = (metadata.get('search_parameters') or {}).get('data_id')
+                    if metadata_id and metadata_id.lower() != data_id.lower():
+                        raise ValueError('SerpAPI metadata belongs to a different place.')
+                    title = (metadata.get('place_info') or {}).get('title')
+                    if not isinstance(title, str) or not title.strip():
+                        raise ValueError('SerpAPI omitted the restaurant name even without keywords. '
+                                         'Supply --name with the verified restaurant name.')
             source_name = args.name or title
             store.manifest.update(source_name=source_name, provider_place_name=title)
         store.add(parse_reviews(payload, source_url, source_name, store.manifest))

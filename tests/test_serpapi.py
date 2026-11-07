@@ -80,6 +80,49 @@ class SerpApiTests(unittest.TestCase):
             self.assertEqual(manifest['repeat_observations'], 2)
             self.assertEqual(manifest['stop_reason'], 'keyword_search_end')
 
+    def test_keyword_response_without_place_info_looks_up_name_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / 'output'
+            requests = []
+            def response(key, params):
+                requests.append(dict(params))
+                if 'query' not in params:
+                    return {'place_info': {'title': 'Verified Eatery'}}
+                if params['query'] == 'sedap':
+                    return {'reviews': []}
+                payload = page(0, 2)
+                del payload['place_info']
+                return payload
+            with patch('reviews.serpapi.load_key', return_value='private'), \
+                 patch('reviews.serpapi.request_page', side_effect=response), \
+                 patch('reviews.serpapi.time.sleep'):
+                self.assertEqual(main([URL, '--provider', 'serpapi', '--review-keywords',
+                                       'sedap,pedas', '--output', str(out)]), 0)
+            self.assertEqual([r.get('query') for r in requests], ['sedap', None, 'pedas'])
+            rows = json.loads((out / 'reviews.json').read_text(encoding='utf-8'))
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]['source_name'], 'Verified Eatery')
+            manifest = json.loads((out / 'manifest.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['api_requests'], 3)
+
+    def test_explicit_name_works_without_place_info(self):
+        with tempfile.TemporaryDirectory() as temp:
+            payload = page(0, 2)
+            del payload['place_info']
+            with patch('reviews.serpapi.load_key', return_value='private'), \
+                 patch('reviews.serpapi.request_page', return_value=payload) as request:
+                self.assertEqual(main([URL, '--provider', 'serpapi', '--review-keywords', 'sedap',
+                                       '--name', 'Verified Eatery', '--output', temp]), 0)
+            self.assertEqual(request.call_count, 1)
+
+    def test_name_lookup_respects_total_request_cap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch('reviews.serpapi.load_key', return_value='private'), \
+                 patch('reviews.serpapi.request_page', return_value={'reviews': []}) as request:
+                self.assertEqual(main([URL, '--provider', 'serpapi', '--review-keywords', 'sedap',
+                                       '--max-pages', '1', '--output', temp]), 2)
+            self.assertEqual(request.call_count, 1)
+
     def test_partial_result_survives_api_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp) / 'output'

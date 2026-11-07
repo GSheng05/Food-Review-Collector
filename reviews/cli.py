@@ -51,6 +51,7 @@ def main(argv=None):
     mode.add_argument('--interactive', action='store_true', help='Visible browser; manually handle login/verification, then press Enter')
     parser.add_argument('--provider', choices=['browser', 'serpapi'], default='browser')
     parser.add_argument('--serpapi-key-file', default='.serpapi-key', help='Local key file, ignored by Git')
+    parser.add_argument('--review-keywords', help='Comma-separated review search terms, e.g. sedap,pedas; SerpAPI returns at most 5 per term')
     parser.add_argument('--max-pages', type=positive_int, default=10, help='Maximum SerpAPI requests per run')
     parser.add_argument('--profile', default='.browser-profile', help='Isolated browser profile directory; keep private')
     parser.add_argument('--delay', type=float, default=2.5, help='Seconds between batches (minimum 1)')
@@ -70,6 +71,10 @@ def main(argv=None):
         platform = platform_for(args.url)
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
+    if args.review_keywords:
+        args.review_keywords = list(dict.fromkeys(word.strip() for word in args.review_keywords.split(',') if word.strip()))
+        if not args.review_keywords or args.provider != 'serpapi' or args.import_google:
+            parser.error('--review-keywords requires SerpAPI and at least one nonempty search term.')
     if args.provider == 'serpapi':
         if args.import_google or platform != 'google_maps':
             parser.error('SerpAPI requires a Google Maps URL and cannot be combined with --import-google.')
@@ -117,7 +122,7 @@ def main(argv=None):
         store.save(reason)
     print(f'Saved {len(store.rows)} reviews to {output.resolve()}. Stop reason: {reason}.')
     print('Completeness is not guaranteed; inspect manifest.json before using the dataset.')
-    return 0 if reason in {'user_limit', 'visible_pagination_end', 'api_pagination_end'} else 2
+    return 0 if reason in {'user_limit', 'visible_pagination_end', 'api_pagination_end', 'keyword_search_end'} else 2
 
 
 def collect_browser(store, args, platform):

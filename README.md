@@ -209,3 +209,20 @@ The bundled list is a starting point; add menu names and spelling variants for e
 "The ayam gepuk was delicious" is English and skipped. "The ayam gepuk was sedap" is
 Code-switched and saved. "Ayam gepuk sangat sedap" is Malay and saved. Predictions still
 need annotation review.
+
+## Search reviews for Malay adjectives
+
+Use --review-keywords to filter at Google/SerpAPI before reviews are returned:
+
+~~~powershell
+.\.venv\Scripts\python.exe collect_reviews.py "RESTAURANT_MAPS_URL" --provider serpapi --review-keywords "sedap,pedas" --limit 50
+~~~
+
+Each comma-separated term is searched separately. This is text matching, so the words need
+not be used grammatically as adjectives and spelling variants need separate terms.
+SerpAPI returns at most 5 reviews per term with no pagination. Two terms yield at most 10
+reviews before duplicates and the existing Malay filter. The limit is a ceiling, not a
+guarantee of 50. Duplicate review IDs across searches are suppressed. The original full
+text is preserved. --max-pages caps the total requests, including keyword searches.
+The manifest records review_keywords and keyword_search_end when all terms were searched.
+Omit --review-keywords to use normal paginated collection.

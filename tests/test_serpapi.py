@@ -60,6 +60,26 @@ class SerpApiTests(unittest.TestCase):
             self.assertEqual(manifest['skipped_without_original_text'], 2)
             self.assertEqual(manifest['skipped_non_google'], 1)
 
+    def test_keyword_searches_are_separate_capped_and_deduplicated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / 'output'
+            requests = []
+            def response(key, params):
+                requests.append(dict(params))
+                return page(0, 5, 'ignored') if params['query'] == 'sedap' else page(3, 8, 'ignored')
+            with patch('reviews.serpapi.load_key', return_value='private'), \
+                 patch('reviews.serpapi.request_page', side_effect=response), \
+                 patch('reviews.serpapi.time.sleep'):
+                result = main([URL, '--provider', 'serpapi', '--review-keywords',
+                               'sedap, pedas,sedap', '--output', str(out)])
+            self.assertEqual(result, 0)
+            self.assertEqual([r['query'] for r in requests], ['sedap', 'pedas'])
+            self.assertTrue(all(r['num'] == 5 and 'next_page_token' not in r for r in requests))
+            manifest = json.loads((out / 'manifest.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['collected_reviews'], 8)
+            self.assertEqual(manifest['repeat_observations'], 2)
+            self.assertEqual(manifest['stop_reason'], 'keyword_search_end')
+
     def test_partial_result_survives_api_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp) / 'output'

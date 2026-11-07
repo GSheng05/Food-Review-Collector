@@ -100,8 +100,12 @@ def collect(store, args, key):
     tokens = set()
     source_name = None
     deadline = time.monotonic() + args.max_minutes * 60
-    for _ in range(args.max_pages):
-        params['num'] = min(60, store.limit - len(store.rows))
+    keywords = args.review_keywords or []
+    store.manifest['review_keywords'] = keywords
+    for index in range(args.max_pages):
+        if keywords:
+            params['query'] = keywords[index]
+        params['num'] = min(5 if keywords else 60, store.limit - len(store.rows))
         store.manifest['api_requests'] += 1
         payload = request_page(key, params)
         returned_id = (payload.get('search_parameters') or {}).get('data_id')
@@ -120,6 +124,13 @@ def collect(store, args, key):
               f'({store.manifest["api_requests"]} API requests)', flush=True)
         if store.full:
             return 'user_limit'
+        if keywords:
+            if index + 1 >= len(keywords):
+                return 'keyword_search_end'
+            if time.monotonic() >= deadline:
+                return 'time_limit'
+            time.sleep(args.delay)
+            continue
         token = (payload.get('serpapi_pagination') or {}).get('next_page_token')
         if not token:
             return 'api_pagination_end'
